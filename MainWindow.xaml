@@ -28,6 +28,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" /> 
                 <ColumnDefinition Width="Auto" /> 
+                <ColumnDefinition Width="Auto" /> 
 
             </Grid.ColumnDefinitions>
             <TextBox x:Name="txtBoxAddress"
@@ -44,12 +45,14 @@
                     Grid.Column="1"
                     Command="{Binding ElementName=Browser,Path=ReloadCommand}"
                     Width="80" />
+            <Button Click="ButtonTest_OnClick"
+                    Grid.Column="2">test</Button>
         </Grid>
         <Border Grid.Row="1"
                 BorderBrush="Gray"
                 BorderThickness="0,1">
             <wpf:ChromiumWebBrowser x:Name="Browser"
-                                    Address="m.jd.com">
+                                    Address="https://m.jd.com/">
                 <behaviors:Interaction.Behaviors>
                     <behaviours:HoverLinkBehaviour x:Name="HoverLinkBehaviour" />
                 </behaviors:Interaction.Behaviors>
