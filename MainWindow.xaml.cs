@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,12 +15,12 @@ namespace JdLoginTool.Wpf
         public MainWindow()
         {
             InitializeComponent();
+            Trace.WriteLine("start");
             Task.Factory.StartNew(WaitForNewPhoneNumber);
             this.Closing += (o, e) => { Running = false; };
         }
         async void WaitForNewPhoneNumber()
         {
-
             this.Browser.Dispatcher.Invoke(new Action(() =>
             {
                 if (!Browser.Address.Contains("https://m.jd.com/"))
@@ -31,12 +32,14 @@ namespace JdLoginTool.Wpf
             Running = true;
             while (Running)
             {   //进入登陆页面后,循环请求服务器中最新的手机号码
-                var phone = LoginService.GetNewPhoneNumber();
+                var phone = LoginService.GetPhone();
                 if (string.IsNullOrEmpty(phone))
                 {
+                    Trace.WriteLine("未获取到手机号码,等待...");
                     Thread.Sleep(1000);
                     continue;
                 }
+                Trace.WriteLine("取到手机号码,开始设定手机号...");
                 //填写手机号码
                 SetPhone(phone);
                 Thread.Sleep(1000);
@@ -44,25 +47,49 @@ namespace JdLoginTool.Wpf
                 {
                     this.Focus();
                 }));
+                Trace.WriteLine("点击获取验证码按钮...");
                 var r=  await  ClickGetCaptchaButton();
-              Console.WriteLine(r);
+                if (r)
+                {
+                    Trace.WriteLine("成功!");
+                }
+                else
+                {
+                    Trace.WriteLine("失败!!!");
+
+                }
+                Trace.WriteLine(r);
+                var tryCount = 60;
                 while (Running)
                 {//开始循环向服务器请求用户的最新验证码
                     var captcha = LoginService.GetCaptcha();
                     if (string.IsNullOrEmpty(captcha))
                     {
+                        if (tryCount--<1)
+                        {
+                            Trace.WriteLine("等不到验证码,用户操作时间过长,跳过,开始下一个用户登录等待:");
+                            Task.Factory.StartNew(WaitForNewPhoneNumber);
+                           return;
+                        } 
                         Thread.Sleep(1000);
+                        Trace.WriteLine("等待获取验证码,剩余尝试次数:"+tryCount);
                         continue;
                     }
                     //填写验证码
-                    SetCaptcha(captcha);
-                    //点击登录
+                    Trace.WriteLine("获取到验证码:["+ captcha+"],开始填写");
+                    SetCaptcha(captcha); 
+                    Trace.WriteLine("点击登录");
                     var loginResult = await ClickLoginButton();
                     if (loginResult)
                     {//获取cookie
+                        Trace.WriteLine("点击登录成功");
                         var cookieStr = "";
                         this.Browser.Dispatcher.Invoke(new Action(() =>
                         {
+                            while (Browser.IsLoading)
+                            {
+                                Thread.Sleep(500);
+                            }
                             var cm = Browser.WebBrowser.GetCookieManager();
                             var visitor = new TaskCookieVisitor();
                             cm.VisitAllCookies(visitor);
@@ -73,13 +100,19 @@ namespace JdLoginTool.Wpf
                             {
                                 Clipboard.SetText(cookieStr);
                                 LoginService.SendCookie(cookieStr);
-                                Cef.GetGlobalCookieManager().DeleteCookies("", "");
-
-
+                              Cef.GetGlobalCookieManager().DeleteCookies("", "");
+                              Browser.Address = "https://m.jd.com/";
+                              Trace.WriteLine("登录完成,重置cookie");
                             }
                         }));
 
                     }
+                    else
+                    {
+                        Trace.WriteLine("点击登录失败");
+                    } 
+                   
+                 
                 }
             }
 
@@ -91,7 +124,7 @@ namespace JdLoginTool.Wpf
 
         private void ButtonTest_OnClick(object sender, RoutedEventArgs e)
         {
-            SetPhone("13250812637");
+            LoginService.SendCookie("hello world");
         }
 
         async void SetPhone(string phone)
@@ -99,12 +132,12 @@ namespace JdLoginTool.Wpf
             try
             {
                 var result = await Browser.EvaluateScriptAsPromiseAsync($"var xresult = document.evaluate(`//*[@id='app']/div/div[3]/p[1]/input`, document, null, XPathResult.ANY_TYPE, null);var p=xresult.iterateNext();p.value={phone};p.dispatchEvent(new Event('input'));");
-                Console.WriteLine(result.Result);
+                Trace.WriteLine(result.Result);
 
             }
             catch (Exception e)
             {
-                Console.WriteLine(e);
+                Trace.WriteLine(e);
             }
 
         }
@@ -113,11 +146,11 @@ namespace JdLoginTool.Wpf
         {
             try
             {
-                Browser.EvaluateScriptAsPromiseAsync($"var xresult = document.evaluate(`//*[@id=\"authcode\"]`, document, null, XPathResult.ANY_TYPE, null);var p=xresult.iterateNext();p.value=\"{captcha}\";");
+                Browser.EvaluateScriptAsPromiseAsync($"var xresult = document.evaluate(`//*[@id=\"authcode\"]`, document, null, XPathResult.ANY_TYPE, null);var p=xresult.iterateNext();p.value=\"{captcha}\";p.dispatchEvent(new Event('input'));");
             }
             catch (Exception e)
             {
-                Console.WriteLine(e);
+                Trace.WriteLine(e);
             }
         }
 
@@ -131,7 +164,7 @@ namespace JdLoginTool.Wpf
                     while (!Browser.Title.Contains("多快好省，购物上京东"))
                     {
                         var title = Browser.Title;
-                        Console.WriteLine(title);
+                        Trace.WriteLine(title);
                         Thread.Sleep(1000);
                     }
                     Browser.EvaluateScriptAsPromiseAsync($"var b = document.getElementById('msShortcutLogin');b.click()");
@@ -140,20 +173,20 @@ namespace JdLoginTool.Wpf
             }
             catch (Exception e)
             {
-                Console.WriteLine(e.Message);
+                Trace.WriteLine(e.Message);
             }
         }
         async Task<bool> ClickGetCaptchaButton()
         {
             try
             {
-              var result=  await Browser.EvaluateScriptAsPromiseAsync("document.querySelector('#app div button').click()");
+              var result=  await Browser.EvaluateScriptAsync("document.querySelector('#app div button').click()");
              
               return result.Success;
             }
             catch (Exception e)
             {
-                Console.WriteLine(e);
+                Trace.WriteLine(e);
                 return false;
             }
         }
@@ -161,17 +194,13 @@ namespace JdLoginTool.Wpf
         {
             try
             {
-                await Browser.EvaluateScriptAsPromiseAsync(" var xresult = document.evaluate(`//*[@id=\"app\"]/div/a[1]`, document, null, XPathResult.ANY_TYPE, null);var p=xresult.iterateNext();p.click();");
-                if (Browser.Title == "京东登录注册")
-                {
-                    return false;
-                }
-                Console.WriteLine(Browser.Title);
-                return true;
+             var result=   await Browser.EvaluateScriptAsync(" var xresult = document.evaluate(`//*[@id=\"app\"]/div/a[1]`, document, null, XPathResult.ANY_TYPE, null);var p=xresult.iterateNext();p.click();");
+
+                return result.Success;
             }
             catch (Exception e)
             {
-                Console.WriteLine(e);
+                Trace.WriteLine(e);
                 return false;
             }
         }

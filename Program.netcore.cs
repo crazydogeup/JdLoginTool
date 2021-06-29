@@ -45,7 +45,7 @@ namespace JdLoginTool.Wpf
 
             //Perform dependency check to make sure all relevant resources are in our output directory.
             Cef.Initialize(settings, performDependencyCheck: true, browserProcessHandler: null);
-
+            Cef.GetGlobalCookieManager().DeleteCookies("", "");
             var app = new App();
             app.InitializeComponent();
             app.Exit += CleanCache;
